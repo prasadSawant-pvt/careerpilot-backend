@@ -1,0 +1,156 @@
+{
+  "/api/roles": {
+    "method": "GET",
+    "description": "Get list of supported technical roles",
+    "response": {
+      "roles": ["Backend Developer", "Frontend Developer", "Full Stack Developer", "DevOps Engineer", "Data Scientist", "Mobile Developer", "QA Engineer", "UI/UX Designer"]
+    }
+  },
+  
+  "/api/experiences": {
+    "method": "GET",
+    "description": "Get available experience levels",
+    "response": {
+      "experiences": ["Fresher (0-1 years)", "Junior (1-3 years)", "Mid-Level (3-5 years)", "Senior (5-8 years)", "Lead/Architect (8+ years)"]
+    }
+  },
+  
+  "/api/roadmap/:role/:experience": {
+    "method": "GET",
+    "description": "Get learning roadmap for a specific role and experience level",
+    "parameters": [
+      {"name": "role", "type": "string", "required": true, "description": "Technical role (e.g., 'backend', 'frontend')"},
+      {"name": "experience", "type": "string", "required": true, "description": "Experience level (e.g., 'junior', 'mid-level')"}
+    ],
+    "response": {
+      "role": "Backend Developer",
+      "experience": "Junior (1-3 years)",
+      "timeline": "3-6 months",
+      "roadmap": [
+        {
+          "id": "fundamentals",
+          "title": "Core Fundamentals",
+          "items": [
+            "Data Structures & Algorithms",
+            "Design Patterns",
+            "Version Control (Git)",
+            "Basic Linux/Unix Commands"
+          ]
+        }
+      ]
+    }
+  },
+  
+  "/api/skills": {
+    "method": "GET",
+    "description": "Get skills for a given role",
+    "queryParams": {
+      "role": "Backend Developer"
+    },
+    "response": {
+      "skills": ["Java", "Spring Boot", "REST API", "SQL", "Microservices"]
+    }
+  },
+  
+    "/api/roadmap": {
+    "method": "GET",
+    "description": "Get roadmap for a given role and experience",
+    "queryParams": {
+      "role": "Backend Developer",
+      "experience": "3-5 years"
+    },
+    "response": {
+      "title": "Backend Developer Roadmap (3-5 years)",
+      "steps": [
+        "Master core Java and OOPs",
+        "Understand Spring Boot framework",
+        "Learn RESTful APIs and best practices",
+        "Work with SQL/NoSQL databases",
+        "Build and scale microservices",
+        "Explore Docker and containerization"
+      ]
+    }
+  },
+  
+  "/api/skill-roadmap": {
+    "method": "GET",
+    "description": "Get detailed roadmap for a specific skill",
+    "queryParams": {
+      "skill": "Spring Boot",
+      "experience": "3-5 years"
+    },
+    "response": {
+      "skill": "Spring Boot",
+      "topics": [
+        "Spring Boot Starter Projects",
+        "Spring Boot Auto Configuration",
+        "REST Controllers and Exception Handling",
+        "JPA and Spring Data",
+        "Profiles, Actuators, and Monitoring"
+      ]
+    }
+  },
+  
+  "/api/questions": {
+    "method": "GET",
+    "description": "Get interview questions for a skill based on experience",
+    "queryParams": {
+      "skill": "Java",
+      "experience": "3-5 years"
+    },
+    "response": {
+      "skill": "Java",
+      "questions": [
+        "Explain the difference between HashMap and ConcurrentHashMap.",
+        "What are the new features in Java 8?",
+        "How does garbage collection work in Java?",
+        "What is the difference between final, finally and finalize?",
+        "Explain the memory model of JVM."
+      ]
+    }
+  },
+  
+  "/api/interview-rounds": {
+    "method": "GET",
+    "description": "Get most common interview rounds with sample questions",
+    "queryParams": {
+      "role": "Backend Developer",
+      "experience": "3-5 years"
+    },
+    "response": {
+      "rounds": {
+        "technical": [
+          "Explain microservices architecture with an example.",
+          "Design a scalable RESTful API for e-commerce."
+        ],
+        "techno-managerial": [
+          "How do you prioritize tasks when under pressure?",
+          "Describe a conflict you faced in a team and how you handled it."
+        ],
+        "system-design": [
+          "Design a URL shortener like Bit.ly.",
+          "Design a rate limiter service."
+        ],
+        "dsa": [
+          "Implement LRU Cache.",
+          "Find the longest palindrome substring."
+        ],
+        "hr": [
+          "Why are you looking for a change?",
+          "Where do you see yourself in 5 years?"
+        ]
+      }
+    }
+  },
+  
+  "/api/query": {
+    "method": "POST",
+    "description": "Ask a custom question and get an AI-generated response",
+    "requestBody": {
+      "query": "Give me roadmap for Frontend Developer with 5+ years experience"
+    },
+    "response": {
+      "result": "For Frontend Developer with 5+ years: Master advanced React, optimize performance, learn Next.js, focus on CI/CD, explore web security and testing frameworks..."
+    }
+  }
+}

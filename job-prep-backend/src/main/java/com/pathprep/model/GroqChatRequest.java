@@ -27,10 +27,3 @@ public class GroqChatRequest {
     }
 }
 
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-class GroqMessage {
-    private String role;
-    private String content;
-}

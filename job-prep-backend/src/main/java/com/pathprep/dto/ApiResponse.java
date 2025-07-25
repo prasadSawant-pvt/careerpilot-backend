@@ -1,12 +1,20 @@
 package com.pathprep.dto;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@Builder
+@NoArgsConstructor
 public class ApiResponse<T> {
     private boolean success;
     private String message;
     private T data;
     private int statusCode; // <-- Added field
 
-    public ApiResponse() {}
+
 
     public ApiResponse(boolean success, String message, T data) {
         this(success, message, data, 200);
@@ -40,7 +48,7 @@ public class ApiResponse<T> {
         return new ApiResponse<>(false, message, null, statusCode);
     }
 
-    // Getters and Setters
+    // Getters and Setters (kept for backward compatibility)
     public boolean isSuccess() {
         return success;
     }

@@ -45,8 +45,11 @@ public class OpenApiConfig {
                         "/api/roadmaps/**",
                         "/api/roles/**",
                         "/api/skills/**",
-                        "/api/ai/**",              // 
-                        "/api/coding-problems/**"
+                        
+"/api/skill-resources/**",
+                        "/api/ai/**",
+                        "/api/coding-problems/**",
+                        "/api/interview-questions/**"
                 )
                 .build();
     }

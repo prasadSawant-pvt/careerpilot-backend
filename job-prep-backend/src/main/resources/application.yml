@@ -3,8 +3,15 @@ spring:
     name: pathprep-backend
   data:
     mongodb:
-      uri: ${MONGODB_URI:mongodb://localhost:27017/pathprep-ai}
+      uri: ${MONGODB_URI:mongodb+srv://username:password@cluster.mongodb.net/your-database?retryWrites=true&w=majority}
       database: ${MONGODB_DATABASE:pathprep-ai}
+      auto-index-creation: true
+      ssl:
+        enabled: true
+      connection-timeout-ms: 30000
+      socket-timeout-ms: 60000
+      min-connections: 5
+      max-connections: 100
   mvc:
     cors:
       mappings:

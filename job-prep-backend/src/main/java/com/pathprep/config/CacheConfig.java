@@ -20,7 +20,8 @@ public class CacheConfig {
             new ConcurrentMapCache("roadmaps"),
             new ConcurrentMapCache("roles"),
             new ConcurrentMapCache("skills"),
-            new ConcurrentMapCache("interviewQuestions")
+            new ConcurrentMapCache("interviewQuestions"),
+            new ConcurrentMapCache("skillResources")
         ));
         return cacheManager;
     }

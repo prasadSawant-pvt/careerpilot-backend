@@ -1,25 +1,36 @@
-import React, { ReactNode, useState } from 'react';
+import React, { ReactNode, useState, useEffect } from 'react';
+import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface LayoutProps {
   children: ReactNode;
+  title?: string;
 }
 
 const navigation = [
   { name: 'Home', href: '/' },
-  { name: 'Roadmaps', href: '/roadmaps' },
   { name: 'About', href: '/about' },
   { name: 'Contact', href: '/contact' },
 ];
 
-const Layout: React.FC<LayoutProps> = ({ children }) => {
+const Layout: React.FC<LayoutProps> = ({ children, title = 'CareerPilot' }) => {
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // Update document title when title prop changes
+  useEffect(() => {
+    document.title = title;
+  }, [title]);
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
+      <Head>
+        <title>{title}</title>
+        <meta name="description" content="Your personalized career development roadmap" />
+        <link rel="icon" href="/favicon.ico" />
+      </Head>
       {/* Header */}
       <header className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

@@ -21,10 +21,9 @@ import reactor.core.publisher.Mono;
 @Slf4j
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/skill-resources")
+@RequestMapping("/skill-resources")
 @Tag(name = "Skill Resources", description = "APIs for managing skill learning resources")
 public class SkillResourceController {
-
     private final SkillResourceService skillResourceService;
 
     @Operation(

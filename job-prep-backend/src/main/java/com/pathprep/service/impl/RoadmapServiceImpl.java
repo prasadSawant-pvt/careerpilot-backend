@@ -22,7 +22,7 @@ public class RoadmapServiceImpl implements RoadmapService {
 
     private final RoadmapRepository roadmapRepository;
     private final GroqService groqService;
-    private static final Logger log = LoggerFactory.getLogger(RoadmapServiceImpl.class);
+    public static final Logger log = LoggerFactory.getLogger(RoadmapServiceImpl.class);
 
     public RoadmapServiceImpl(RoadmapRepository roadmapRepository, GroqService groqService) {
         this.roadmapRepository = roadmapRepository;
@@ -126,6 +126,23 @@ public class RoadmapServiceImpl implements RoadmapService {
                     // Optionally: parse aiResponse and map to roadmap sections
                     log.debug("AI Response: {}", aiResponse);
                     return roadmapRepository.save(roadmap);
+                });
+    }
+    
+    @Override
+    public Mono<Roadmap> getOrGenerateRoadmap(String role, String experience) {
+        log.debug("Getting or generating roadmap for role: {}, experience: {}", role, experience);
+        
+        // First try to find an existing roadmap
+        return roadmapRepository.findByRoleAndExperience(role, experience)
+                .switchIfEmpty(Mono.defer(() -> {
+                    // If not found, generate a new one with empty skills list
+                    log.debug("No existing roadmap found, generating new one for role: {}, experience: {}", role, experience);
+                    return generateNewRoadmap(role, experience, List.of());
+                }))
+                .onErrorResume(e -> {
+                    log.error("Error in getOrGenerateRoadmap: {}", e.getMessage(), e);
+                    return Mono.error(new RuntimeException("Failed to get or generate roadmap: " + e.getMessage(), e));
                 });
     }
 }

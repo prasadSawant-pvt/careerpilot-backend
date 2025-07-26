@@ -1,5 +1,7 @@
 package com.pathprep.model;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.pathprep.util.serialization.TopicDeserializer;
 import lombok.Data;
 import org.springframework.data.mongodb.core.mapping.Document;
 
@@ -11,6 +13,7 @@ import java.util.List;
  */
 @Data
 @Document
+@JsonDeserialize(using = TopicDeserializer.class)
 public class Topic {
     private String topicName;
     private String description;

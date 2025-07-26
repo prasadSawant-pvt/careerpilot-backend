@@ -1,7 +1,7 @@
 package com.pathprep.model;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.pathprep.model.deserializer.DetailedRoadmapDeserializer;
 import lombok.Data;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.Id;
@@ -20,6 +20,7 @@ import java.util.Map;
  */
 @Data
 @Document(collection = "detailed_roadmaps")
+@JsonDeserialize(using = DetailedRoadmapDeserializer.class)
 public class DetailedRoadmap {
     
     @Id
@@ -99,34 +100,15 @@ public class DetailedRoadmap {
     }
 
     /**
-     * Sets the phases from a list of maps, converting each map to a RoadmapPhase
-     * @param phaseMaps List of phase maps to convert to RoadmapPhase objects
+     * Sets the phases for this roadmap.
+     * @param phases List of RoadmapPhase objects
      */
-    public void setPhases(List<Map<String, Object>> phaseMaps) {
-        if (phaseMaps == null) {
-            this.phases = null;
-            return;
-        }
+    public void setPhases(List<RoadmapPhase> phases) {
+        this.phases = phases;
         
-        // Convert List<Map> to List<RoadmapPhase>
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        
-        this.phases = phaseMaps.stream()
-            .map(phaseMap -> {
-                // Map 'title' to 'phaseName' if needed
-                if (phaseMap.containsKey("title") && !phaseMap.containsKey("phaseName")) {
-                    phaseMap.put("phaseName", phaseMap.get("title"));
-                }
-                
-                // Convert the map to RoadmapPhase
-                return mapper.convertValue(phaseMap, RoadmapPhase.class);
-            })
-            .toList();
-            
         // Update estimated weeks based on phases if not set
-        if (this.estimatedWeeks == null && !this.phases.isEmpty()) {
-            this.estimatedWeeks = this.phases.stream()
+        if (this.estimatedWeeks == null && phases != null && !phases.isEmpty()) {
+            this.estimatedWeeks = phases.stream()
                 .mapToInt(phase -> phase.getWeekNumber() != null ? phase.getWeekNumber() : 1)
                 .max()
                 .orElse(1);

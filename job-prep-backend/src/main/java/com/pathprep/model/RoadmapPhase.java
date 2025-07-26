@@ -1,5 +1,6 @@
 package com.pathprep.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 import org.springframework.data.mongodb.core.mapping.Document;
 
@@ -15,6 +16,7 @@ public class RoadmapPhase {
     private String phaseName;
     private Integer weekNumber;
     private String objective;
+    @JsonProperty("topics")
     private List<Topic> topics;
     private List<String> deliverables;
     

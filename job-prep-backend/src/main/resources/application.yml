@@ -31,12 +31,23 @@ server:
 # SpringDoc OpenAPI Configuration
 springdoc:
   swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
     operations-sorter: method
     tags-sorter: alpha
     doc-expansion: none
-    path: /swagger-ui.html
+    use-root-path: true
+    disable-swagger-default-url: true
+    urls:
+      - url: /v3/api-docs
+        name: API V1
   api-docs:
-    path: /api-docs
+    path: /v3/api-docs
+  default-produces-media-type: application/json
+  default-consumes-media-type: application/json
+  show-actuator: false
+  cache:
+    disabled: true
 
 groq:
   api-key: ${GROQ_API_KEY:your-api-key-here}
@@ -81,3 +92,15 @@ management:
   health:
     mongo:
       enabled: true
+
+
+  logging:
+    level:
+      org:
+        springframework:
+          web:
+            filter:
+              CommonsRequestLoggingFilter: DEBUG
+    pattern:
+      console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+

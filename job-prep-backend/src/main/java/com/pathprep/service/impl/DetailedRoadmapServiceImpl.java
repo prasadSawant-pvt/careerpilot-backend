@@ -11,7 +11,6 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import com.pathprep.exception.ResourceNotFoundException;
 import com.pathprep.model.DetailedRoadmap;
-import com.pathprep.model.RoadmapPhase;
 import com.pathprep.repository.DetailedRoadmapRepository;
 import com.pathprep.service.DetailedRoadmapService;
 import com.pathprep.service.GroqAIService;
@@ -23,13 +22,8 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.UUID;
 
 /**
  * Implementation of the DetailedRoadmapService interface.
@@ -45,9 +39,24 @@ public class DetailedRoadmapServiceImpl implements DetailedRoadmapService {
     private final GroqProperties groqProperties;
     private final ModelMapper modelMapper;
 
+    private int getDefaultTimeline(String experienceLevel) {
+        if (experienceLevel == null) {
+            return 12; // Default to intermediate
+        }
+        return switch (experienceLevel.toLowerCase()) {
+            case "beginner" -> 16;
+            case "advanced" -> 8;
+            default -> 12; // INTERMEDIATE
+        };
+    }
+    
     @Override
     @Cacheable(value = "roadmaps", key = "#request.compositeKey")
     public Mono<DetailedRoadmapResponse> generateOrGetRoadmap(DetailedRoadmapRequest request) {
+        // Set default timeline if not provided
+        if (request.getTimelineWeeks() == null) {
+            request.setTimelineWeeks(getDefaultTimeline(request.getExperienceLevel()));
+        }
         String compositeKey = request.getCompositeKey();
         log.info("Generating or retrieving roadmap for key: {}", compositeKey);
         
@@ -148,21 +157,8 @@ public class DetailedRoadmapServiceImpl implements DetailedRoadmapService {
         // Sort phases by week number
         combinedPhases.sort(Comparator.comparingInt(RoadmapPhase::getWeekNumber));
         
-        // Convert List<RoadmapPhase> to List<Map> for setPhases
-        ObjectMapper mapper = new ObjectMapper();
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> phaseMaps = (List<Map<String, Object>>) (List<?>) combinedPhases.stream()
-            .map(phase -> {
-                Map<String, Object> map = mapper.convertValue(phase, Map.class);
-                // Ensure phaseName is set from title if not present
-                if (!map.containsKey("phaseName") && map.containsKey("title")) {
-                    map.put("phaseName", map.get("title"));
-                }
-                return map;
-            })
-            .collect(Collectors.toList());
-            
-        combined.setPhases(phaseMaps);
+        // Set the combined phases directly
+        combined.setPhases(combinedPhases);
         
         // Update estimated weeks
         if (!combinedPhases.isEmpty()) {
@@ -192,13 +188,15 @@ public class DetailedRoadmapServiceImpl implements DetailedRoadmapService {
     @Override
     @CacheEvict(value = "roadmaps", key = "#roadmap.compositeKey")
     public Mono<DetailedRoadmap> saveRoadmap(DetailedRoadmap roadmap) {
-        log.debug("Saving roadmap with key: {}", roadmap.getCompositeKey());
+        log.info("Saving roadmap with key: {}", roadmap.getCompositeKey());
         if (roadmap.getId() == null) {
             roadmap.setId(UUID.randomUUID().toString());
             roadmap.setCreatedAt(LocalDateTime.now());
         }
         roadmap.setUpdatedAt(LocalDateTime.now());
-        return roadmapRepository.save(roadmap);
+        return roadmapRepository.save(roadmap)
+            .doOnSuccess(saved -> log.info("Successfully saved roadmap with key: {}", saved.getCompositeKey()))
+            .doOnError(e -> log.error("Error saving roadmap with key: " + roadmap.getCompositeKey(), e));
     }
 
     @Override
@@ -216,94 +214,89 @@ public class DetailedRoadmapServiceImpl implements DetailedRoadmapService {
         if (roadmap.getUpdatedAt() != null) {
             return Duration.between(roadmap.getUpdatedAt(), LocalDateTime.now()).toDays() > 30;
         }
-        // Update if we don't have an update timestamp
+        // If no update timestamp, update it
         return true;
     }
     
     private String buildPrompt(DetailedRoadmapRequest request) {
-        return String.format("""
-                Generate a detailed learning roadmap for a %s %s.
-                
-                IMPORTANT: Your response must be a valid JSON object without any markdown formatting, extra text, or code blocks.
-                Do not include any explanations or notes outside the JSON structure.
-                
-                Required JSON structure (all fields are required unless marked as optional):
-                
+    // Ensure we have a valid timeline
+    int weeks = request.getTimelineWeeks() != null ? 
+        request.getTimelineWeeks() : 
+        getDefaultTimeline(request.getExperienceLevel());
+        
+    return String.format("""
+        Generate a detailed learning roadmap for a %s %s.
+        
+        IMPORTANT: Your response must be a valid JSON object without any markdown formatting, extra text, or code blocks.
+        Do not include any explanations or notes outside the JSON structure.
+        
+        The JSON must follow this exact structure:
+        {
+          "phases": [
+            {
+              "phaseName": "string",
+              "weekNumber": number,
+              "objective": "string",
+              "topics": [
                 {
-                  "title": "Roadmap title",
-                  "description": "Brief description of the roadmap",
-                  "estimatedDurationWeeks": 12,
-                  "phases": [
+                  "topicName": "string",
+                  "description": "string",
+                  "estimatedHours": number,
+                  "difficulty": "string",
+                  "subtopics": [
                     {
-                      "title": "Phase title",
-                      "description": "Phase description",
-                      "durationWeeks": 2,
-                      "topics": [
-                        {
-                          "title": "Topic title",
-                          "description": "Topic description",
-                          "estimatedHours": 10,
-                          "difficulty": "BEGINNER|INTERMEDIATE|ADVANCED",
-                          "subtopics": [
-                            {
-                              "title": "Subtopic title",
-                              "learningObjectives": ["Objective 1", "Objective 2"],
-                              "resources": [
-                                {
-                                  "title": "Resource title",
-                                  "url": "https://example.com/resource",
-                                  "type": "ARTICLE|VIDEO|COURSE|DOCUMENTATION|PRACTICE"
-                                }
-                              ],
-                              "difficulty": "BEGINNER|INTERMEDIATE|ADVANCED",
-                              "practiceType": "CODING_EXERCISE|QUIZ|PROJECT|READING"
-                            }
-                          ]
-                        }
-                      ]
+                      "name": "string",
+                      "description": "string"
                     }
                   ]
                 }
-                
-                Guidelines:
-                1. Use double quotes for all strings
-                2. Do not use trailing commas
-                3. Escape any special characters in strings with backslashes
-                4. Ensure all opening brackets have matching closing brackets
-                5. Only include the JSON object in your response, no other text
-                
-                Additional context:
-                - Current skills: %s
-                - Timeline: %d weeks
-                - Focus area: %s
-                - Make the roadmap practical with hands-on exercises
-                - Include real-world projects where applicable
-                - Suggest resources for each topic
-                - Include estimated time commitments
-                
-                Now generate the roadmap for a %s %s:
-                """,
-                request.getExperienceLevel(),
-                request.getRole(),
-                request.getCurrentSkills() != null ? String.join(", ", request.getCurrentSkills()) : "None specified",
-                request.getTimelineWeeks() != null ? request.getTimelineWeeks() : getDefaultTimeline(request.getExperienceLevel()),
-                request.getFocusArea() != null ? request.getFocusArea() : "General",
-                request.getExperienceLevel(),
-                request.getRole()
-        );
-    }
-    
-    private int getDefaultTimeline(String experienceLevel) {
-        if (experienceLevel == null) {
-            return 8; // Default to intermediate
+              ],
+              "deliverables": ["string"]
+            }
+          ]
         }
-        return switch (experienceLevel.toLowerCase()) {
-            case "beginner" -> 16;
-            case "advanced" -> 8;
-            default -> 12; // INTERMEDIATE
-        };
-    }
-    
+        
+        Guidelines:
+        - Create a %d-week learning plan
+        - For each phase, include 3-5 topics
+        - Each topic must be a complete object with all required fields
+        - Each topic must include topicName, description, estimatedHours, and difficulty
+        - Include 2-3 subtopics for each main topic
+        - Set appropriate difficulty levels (Beginner/Intermediate/Advanced)
+        - Include 2-3 deliverables per phase
+        - Focus on practical, hands-on learning
+        - Include both theoretical concepts and practical applications
+        - Structure the content to build upon previous knowledge
+        - Include relevant technologies and tools
+        
+        Role: %s
+        Experience Level: %s
+        Current Skills: %s
+        Focus Area: %s
+        
+        Important Notes:
+        1. The response must be valid JSON that can be parsed by Jackson
+        2. Do not include any markdown formatting (no ```json or ```)
+        3. Do not include any explanatory text outside the JSON structure
+        4. Ensure all strings are properly escaped
+        5. Include all required fields in the JSON structure
+        6. The response must be a single, valid JSON object
+        7. The topics array must contain objects, not strings
+        8. Each topic must have at minimum: topicName, description, estimatedHours, difficulty
+        9. estimatedHours should be a number between 1-40 for each topic
+        10. difficulty must be one of: Beginner, Intermediate, Advanced
+        """,
+        request.getExperienceLevel(),
+        request.getRole(),
+        weeks,
+        request.getRole(),
+        request.getExperienceLevel(),
+        request.getCurrentSkills() != null && !request.getCurrentSkills().isEmpty() ? 
+            String.join(", ", request.getCurrentSkills()) : "None specified",
+        request.getFocusArea() != null ? request.getFocusArea() : "General"
+    );
+}
+
     private DetailedRoadmapResponse convertToResponse(DetailedRoadmap roadmap) {
         if (roadmap == null) {
             return null;

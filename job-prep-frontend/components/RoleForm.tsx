@@ -1,41 +1,115 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
+import { useApi } from '@/hooks/useApi';
+import ApiService from '@/services/api';
+import { Role, ExperienceLevel } from '@/types/api';
 
-const roles = [
-  'Java Backend Developer',
-  'Frontend Developer',
-  'Full Stack Developer',
-  'Data Scientist',
-  'DevOps Engineer',
-  'Mobile Developer',
-  'UI/UX Designer',
-  'QA Engineer',
-  'Cloud Architect',
-  'Machine Learning Engineer'
+// Static roles that will always be available
+const STATIC_ROLES: Role[] = [
+  { id: 'frontend', name: 'Frontend Developer' },
+  { id: 'backend', name: 'Backend Developer' },
+  { id: 'fullstack', name: 'Full Stack Developer' },
+  { id: 'devops', name: 'DevOps Engineer' },
+  { id: 'data-scientist', name: 'Data Scientist' },
+  { id: 'ai-ml-engineer', name: 'AI/ML Engineer' },
+  { id: 'qa-engineer', name: 'QA Engineer' },
+  { id: 'mobile', name: 'Mobile Developer' },
+  { id: 'cloud-architect', name: 'Cloud Architect' },
+  { id: 'security-engineer', name: 'Security Engineer' },
+  { id: 'data-engineer', name: 'Data Engineer' },
+  { id: 'sre', name: 'Site Reliability Engineer' },
+  { id: 'other', name: 'Other (Specify)' },
 ];
 
-const experiences = [
-  { value: '0-1yr', label: 'Entry Level (0-1 year)' },
-  { value: '1-2yrs', label: 'Junior (1-2 years)' },
-  { value: '2-3yrs', label: 'Mid-Level (2-3 years)' },
-  { value: '3-5yrs', label: 'Senior (3-5 years)' },
-  { value: '5+yrs', label: 'Lead/Architect (5+ years)' }
-];
+// Fallback roles in case the API is not available
+const FALLBACK_ROLES: Role[] = [...STATIC_ROLES];
 
 const RoleForm: React.FC = () => {
   const [selectedRole, setSelectedRole] = useState('');
   const [selectedExperience, setSelectedExperience] = useState('');
+  const [customRole, setCustomRole] = useState('');
+  const [showCustomRoleInput, setShowCustomRoleInput] = useState(false);
+  const [roles, setRoles] = useState<Role[]>([]);
+  
+  // Hardcoded experience levels
+  const experiences: ExperienceLevel[] = [
+    { id: 'intern', name: 'Intern' },
+    { id: 'beginner', name: 'Beginner (0-2 years)' },
+    { id: 'intermediate', name: 'Intermediate (2-5 years)' },
+    { id: 'senior', name: 'Senior (5+ years)' },
+    { id: 'lead', name: 'Lead/Manager' }
+  ];
+  
   const [isLoading, setIsLoading] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
   const [error, setError] = useState('');
   const router = useRouter();
+  const { execute: fetchRoles } = useApi<Role[]>();
+  
+  // Handle role selection change
+  const handleRoleChange = (e: React.ChangeEvent<{ value: unknown }>) => {
+    const roleId = e.target.value as string;
+    setSelectedRole(roleId);
+    
+    // Show custom role input if "Other" is selected
+    if (roleId === 'other') {
+      setShowCustomRoleInput(true);
+      setCustomRole('');
+    } else {
+      setShowCustomRoleInput(false);
+      setCustomRole('');
+    }
+  };
+
+  // Fetch roles on component mount
+  useEffect(() => {
+    const initializeData = async () => {
+      try {
+        setIsInitializing(true);
+        setError('');
+        
+        try {
+          // Try to fetch roles from the API
+          const rolesResponse = await fetchRoles(() => ApiService.getRoles());
+          if (rolesResponse?.success && rolesResponse.data?.length) {
+            setRoles(rolesResponse.data);
+            return; // Successfully loaded roles from API
+          }
+          
+          // If API call fails or returns no data, use fallback roles
+          console.warn('No roles found from API, using fallback roles');
+          setRoles(FALLBACK_ROLES);
+        } catch (err) {
+          // If API call fails, use fallback roles
+          console.warn('Failed to fetch roles from API, using fallback roles:', err);
+          setRoles(FALLBACK_ROLES);
+        }
+      } catch (err) {
+        console.error('Error initializing roles:', err);
+        // Even if there's an error, we can still show the form with fallback roles
+        setRoles(FALLBACK_ROLES);
+        setError('Some features may be limited. Using default roles.');
+      } finally {
+        setIsInitializing(false);
+      }
+    };
+    
+    initializeData();
+  }, [fetchRoles]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     
+    // Validate form
     if (!selectedRole) {
       setError('Please select a role');
+      return;
+    }
+    
+    if (selectedRole === 'other' && !customRole.trim()) {
+      setError('Please enter a custom role');
       return;
     }
     
@@ -47,11 +121,33 @@ const RoleForm: React.FC = () => {
     setIsLoading(true);
     
     try {
-      // Convert to URL-friendly format
-      const roleSlug = selectedRole.toLowerCase().replace(/\s+/g, '-');
-      const expSlug = selectedExperience.toLowerCase();
+      // For custom roles, use the entered text, otherwise use the selected role from the list
+      let roleToUse;
+      if (selectedRole === 'other') {
+        roleToUse = { 
+          id: customRole.toLowerCase().replace(/\s+/g, '-'), 
+          name: customRole 
+        };
+      } else {
+        // For predefined roles, find the role in the static list first, then fall back to API roles
+        roleToUse = STATIC_ROLES.find(r => r.id === selectedRole) || 
+                   roles.find(r => r.id === selectedRole);
+      }
       
-      await router.push(`/roadmap/${roleSlug}/${expSlug}`);
+      const experience = experiences.find(e => e.id === selectedExperience);
+      
+      if (!roleToUse || !experience) {
+        throw new Error('Invalid selection');
+      }
+      
+      // Create URL-friendly slugs for the route
+      // Use the role name for the API call but keep the ID in the URL for better readability
+      const roleSlug = roleToUse.id;
+      const experienceSlug = experience.id;
+      
+      // Navigate to the roadmap page with the selected role and experience
+      // The API call in the roadmap page will use the role name from the route parameters
+      router.push(`/roadmap/${encodeURIComponent(roleToUse.name)}/${experienceSlug}`);
     } catch (err) {
       console.error('Navigation error:', err);
       setError('Failed to load roadmap. Please try again.');
@@ -88,24 +184,45 @@ const RoleForm: React.FC = () => {
             </div>
           )}
           
-          <div className="space-y-2">
-            <label htmlFor="role" className="block text-sm font-medium text-gray-700">
-              What role are you targeting?
+          <div className="mb-6">
+            <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-2">
+              Select Your Role
             </label>
             <select
               id="role"
               value={selectedRole}
-              onChange={(e) => setSelectedRole(e.target.value)}
-              className="mt-1 block w-full pl-3 pr-10 py-3 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-lg border"
-              disabled={isLoading}
+              onChange={handleRoleChange}
+              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+              disabled={isLoading || isInitializing}
             >
               <option value="">Select a role</option>
-              {roles.map((role) => (
-                <option key={role} value={role}>
-                  {role}
+              {STATIC_ROLES.map((role) => (
+                <option key={role.id} value={role.id}>
+                  {role.name}
                 </option>
               ))}
             </select>
+            
+            {/* Custom role input */}
+            {showCustomRoleInput && (
+              <div className="mt-3">
+                <label htmlFor="customRole" className="block text-sm font-medium text-gray-700 mb-1">
+                  Enter your specific role
+                </label>
+                <input
+                  type="text"
+                  id="customRole"
+                  value={customRole}
+                  onChange={(e) => setCustomRole(e.target.value)}
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                  placeholder="E.g., Blockchain Developer, Game Developer, etc."
+                  disabled={isLoading}
+                />
+              </div>
+            )}
+            {isInitializing && (
+              <p className="mt-2 text-sm text-gray-500">Loading roles...</p>
+            )}
           </div>
           
           <div className="space-y-2">
@@ -117,32 +234,33 @@ const RoleForm: React.FC = () => {
               value={selectedExperience}
               onChange={(e) => setSelectedExperience(e.target.value)}
               className="mt-1 block w-full pl-3 pr-10 py-3 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-lg border"
-              disabled={isLoading}
+              disabled={isLoading || isInitializing || !selectedRole}
             >
               <option value="">Select experience level</option>
               {experiences.map((exp) => (
-                <option key={exp.value} value={exp.value}>
-                  {exp.label}
+                <option key={exp.id} value={exp.id}>
+                  {exp.name}
                 </option>
               ))}
             </select>
+            {isInitializing && (
+              <p className="mt-2 text-sm text-gray-500">Loading experience levels...</p>
+            )}
           </div>
           
           <div className="pt-2">
             <button
               type="submit"
-              disabled={isLoading || !selectedRole || !selectedExperience}
-              className={`w-full flex justify-center items-center py-3 px-6 border border-transparent rounded-lg shadow-sm text-base font-medium text-white ${
-                isLoading || !selectedRole || !selectedExperience
-                  ? 'bg-blue-400 cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200'
-              }`}
+              disabled={isLoading || isInitializing}
+              className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${isLoading || isInitializing ? 'opacity-75 cursor-not-allowed' : ''}`}
             >
               {isLoading ? (
                 <>
                   <ArrowPathIcon className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" />
-                  Generating...
+                  Loading...
                 </>
+              ) : isInitializing ? (
+                'Loading form data...'
               ) : (
                 'Generate My Roadmap'
               )}

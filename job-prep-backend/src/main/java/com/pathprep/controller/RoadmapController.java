@@ -25,7 +25,7 @@ import reactor.core.publisher.Mono;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/")
 @Tag(name = "Roadmap", description = "APIs for generating and managing learning roadmaps")
 public class RoadmapController {
 
@@ -39,51 +39,69 @@ public class RoadmapController {
         this.skillService = skillService;
     }
 
-    @PostMapping("/ai/generate-roadmap")
-    @Operation(summary = "Generate a new learning roadmap using AI")
-    public Mono<ResponseEntity<ApiResponse<Roadmap>>> generateRoadmap(
-            @Valid @RequestBody GenerateRoadmapRequest request) {
+//    @PostMapping("/ai/generate-roadmap")
+//    @Operation(summary = "Generate a new learning roadmap using AI")
+//    public Mono<ResponseEntity<ApiResponse<Roadmap>>> generateRoadmap(
+//            @Valid @RequestBody GenerateRoadmapRequest request) {
+//
+//        return roadmapService.generateRoadmap(request.getRole(), request.getExperience(), request.getSkills())
+//                .map(roadmap -> ResponseEntity.ok(
+//                        ApiResponse.success("Roadmap generated successfully", roadmap)
+//                ))
+//                .onErrorResume(e -> Mono.just(ResponseEntity.badRequest()
+//                        .body(ApiResponse.error(e.getMessage()))));
+//    }
+//
+//    @GetMapping("/roadmaps/{id}")
+//    @Operation(summary = "Get a roadmap by ID")
+//    public Mono<ResponseEntity<ApiResponse<Roadmap>>> getRoadmap(@PathVariable String id) {
+//        return roadmapService.getRoadmap(id)
+//                .map(roadmap -> ResponseEntity.ok(
+//                        ApiResponse.success("Roadmap retrieved successfully", roadmap)
+//                ))
+//                .switchIfEmpty(Mono.just(ResponseEntity.notFound().build()));
+//    }
+//
+//    @GetMapping("/roadmaps/recent")
+//    @Operation(summary = "Get most recently generated roadmaps")
+//    public Mono<ResponseEntity<ApiResponse<List<Roadmap>>>> getRecentRoadmaps(
+//            @RequestParam(defaultValue = "5") int limit) {
+//
+//        return roadmapService.getRecentRoadmaps(limit)
+//                .collectList()
+//                .map(roadmaps -> ResponseEntity.ok(
+//                        ApiResponse.success("Recent roadmaps retrieved successfully", roadmaps)
+//                ));
+//    }
+//
+//    @GetMapping("/roadmaps/trending")
+//    @Operation(summary = "Get trending roadmaps")
+//    public Mono<ResponseEntity<ApiResponse<List<Roadmap>>>> getTrendingRoadmaps(
+//            @RequestParam(defaultValue = "5") int limit) {
+//
+//        return roadmapService.getTrendingRoadmaps(limit)
+//                .collectList()
+//                .map(roadmaps -> ResponseEntity.ok(
+//                        ApiResponse.success("Trending roadmaps retrieved successfully", roadmaps)
+//                ));
+//    }
 
-        return roadmapService.generateRoadmap(request.getRole(), request.getExperience(), request.getSkills())
-                .map(roadmap -> ResponseEntity.ok(
-                        ApiResponse.success("Roadmap generated successfully", roadmap)
-                ))
-                .onErrorResume(e -> Mono.just(ResponseEntity.badRequest()
-                        .body(ApiResponse.error(e.getMessage()))));
-    }
-
-    @GetMapping("/roadmaps/{id}")
-    @Operation(summary = "Get a roadmap by ID")
-    public Mono<ResponseEntity<ApiResponse<Roadmap>>> getRoadmap(@PathVariable String id) {
-        return roadmapService.getRoadmap(id)
+    @GetMapping("/roadmap/{role}/{experienceLevel}")
+    @Operation(summary = "Get a roadmap by role and experience level")
+    public Mono<ResponseEntity<ApiResponse<Roadmap>>> getRoadmapByRoleAndExperience(
+            @PathVariable String role,
+            @PathVariable String experienceLevel) {
+        
+        // Convert URL-encoded path variables to proper format
+        String formattedRole = role.replace("-", " ");
+        String formattedExperience = experienceLevel.replace("-", " ").replace(" ", "-");
+        
+        return roadmapService.getOrGenerateRoadmap(formattedRole, formattedExperience)
                 .map(roadmap -> ResponseEntity.ok(
                         ApiResponse.success("Roadmap retrieved successfully", roadmap)
                 ))
-                .switchIfEmpty(Mono.just(ResponseEntity.notFound().build()));
-    }
-
-    @GetMapping("/roadmaps/recent")
-    @Operation(summary = "Get most recently generated roadmaps")
-    public Mono<ResponseEntity<ApiResponse<List<Roadmap>>>> getRecentRoadmaps(
-            @RequestParam(defaultValue = "5") int limit) {
-
-        return roadmapService.getRecentRoadmaps(limit)
-                .collectList()
-                .map(roadmaps -> ResponseEntity.ok(
-                        ApiResponse.success("Recent roadmaps retrieved successfully", roadmaps)
-                ));
-    }
-
-    @GetMapping("/roadmaps/trending")
-    @Operation(summary = "Get trending roadmaps")
-    public Mono<ResponseEntity<ApiResponse<List<Roadmap>>>> getTrendingRoadmaps(
-            @RequestParam(defaultValue = "5") int limit) {
-
-        return roadmapService.getTrendingRoadmaps(limit)
-                .collectList()
-                .map(roadmaps -> ResponseEntity.ok(
-                        ApiResponse.success("Trending roadmaps retrieved successfully", roadmaps)
-                ));
+                .onErrorResume(e -> Mono.just(ResponseEntity.badRequest()
+                        .body(ApiResponse.error(e.getMessage()))));
     }
 
     @GetMapping("/roles")
@@ -96,15 +114,15 @@ public class RoadmapController {
                 ));
     }
 
-    @GetMapping("/skills/search")
-    @Operation(summary = "Search for skills")
-    public Mono<ResponseEntity<ApiResponse<List<Skill>>>> searchSkills(@RequestParam String query) {
-        return skillService.searchSkills(query)
-                .collectList()
-                .map(skills -> ResponseEntity.ok(
-                        ApiResponse.success("Skills retrieved successfully", skills)
-                ));
-    }
+//    @GetMapping("/skills/search")
+//    @Operation(summary = "Search for skills")
+//    public Mono<ResponseEntity<ApiResponse<List<Skill>>>> searchSkills(@RequestParam String query) {
+//        return skillService.searchSkills(query)
+//                .collectList()
+//                .map(skills -> ResponseEntity.ok(
+//                        ApiResponse.success("Skills retrieved successfully", skills)
+//                ));
+//    }
 
     @PostMapping("/ai/query")
     @Operation(

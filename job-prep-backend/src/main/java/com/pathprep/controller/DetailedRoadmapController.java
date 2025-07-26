@@ -5,6 +5,7 @@ import com.pathprep.dto.ApiResponse;
 import com.pathprep.dto.response.DetailedRoadmapResponse;
 import com.pathprep.service.DetailedRoadmapService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -22,7 +23,7 @@ import reactor.core.publisher.Mono;
  * Provides endpoints for generating and retrieving comprehensive learning paths.
  */
 @RestController
-@RequestMapping("/api/roadmaps")
+@RequestMapping("/roadmaps")
 @RequiredArgsConstructor
 @Slf4j
 @Tag(name = "Detailed Roadmap", description = "API for generating and managing detailed learning roadmaps")
@@ -31,7 +32,42 @@ public class DetailedRoadmapController {
     private final DetailedRoadmapService roadmapService;
 
     @Operation(
-        summary = "Generate or retrieve a detailed learning roadmap",
+        summary = "Generate or retrieve a detailed learning roadmap (GET)",
+        description = "Generates a new detailed learning roadmap or retrieves an existing one based on role and experience level using query parameters. " +
+                     "Set forceRegenerate=true to force a new roadmap to be generated even if one exists."
+    )
+    @ApiResponses(value = {
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "Successfully generated or retrieved roadmap",
+            content = @Content(schema = @Schema(implementation = DetailedRoadmapResponse.class))
+        ),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "400",
+            description = "Invalid input parameters"
+        ),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "500",
+            description = "Internal server error"
+        )
+    })
+    @GetMapping("/detailed")
+    public Mono<ResponseEntity<ApiResponse<DetailedRoadmapResponse>>> getDetailedRoadmap(
+            @RequestParam String role,
+            @RequestParam String experienceLevel,
+            @Parameter(description = "Force regeneration of roadmap even if one exists", required = false)
+            @RequestParam(required = false, defaultValue = "false") boolean forceRegenerate) {
+        
+        DetailedRoadmapRequest request = DetailedRoadmapRequest.builder()
+                .role(role)
+                .experienceLevel(experienceLevel)
+                .forceRegenerate(forceRegenerate)
+                .build();
+        return generateOrGetRoadmap(request);
+    }
+    
+    @Operation(
+        summary = "Generate or retrieve a detailed learning roadmap (POST)",
         description = "Generates a new detailed learning roadmap or retrieves an existing one based on role and experience level."
     )
     @ApiResponses(value = {
@@ -53,8 +89,8 @@ public class DetailedRoadmapController {
     public Mono<ResponseEntity<ApiResponse<DetailedRoadmapResponse>>> generateOrGetRoadmap(
             @Valid @RequestBody DetailedRoadmapRequest request) {
         
-        log.info("Received request to generate/retrieve roadmap for role: {}, level: {}", 
-                request.getRole(), request.getExperienceLevel());
+        log.info("Received request to generate/retrieve roadmap for role: {}, level: {}, forceRegenerate: {}", 
+                request.getRole(), request.getExperienceLevel(), request.isForceRegenerate());
         
         return roadmapService.generateOrGetRoadmap(request)
                 .map(roadmap -> ResponseEntity.ok(

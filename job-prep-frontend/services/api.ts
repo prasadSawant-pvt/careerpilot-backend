@@ -1,127 +1,219 @@
-import { mockApi } from '@/utils/mockApi';
-import type { 
-  Role, 
-  ExperienceLevel, 
-  RoadmapResponse, 
-  InterviewQuestion, 
-  InterviewRound, 
+import type {
+  Role,
+  ExperienceLevel,
+  RoadmapResponse,
+  DetailedRoadmapResponse,
+  InterviewQuestion,
+  InterviewQuestionResponse,
+  InterviewRound,
   Skill,
-  ApiResponse
+  GenerateQuestionsRequest,
+  DetailedRoadmapRequest,
+  PaginationParams,
+  SearchParams,
+  ApiResponse,
+  ApiError
 } from '@/types/api';
 
-// In a real implementation, this would be replaced with actual API calls
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api';
-const USE_MOCK = process.env.NODE_ENV === 'development';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080/api';
+const DEFAULT_HEADERS = {
+  'Content-Type': 'application/json',
+  'Accept': 'application/json',
+};
 
 // Helper function to handle API responses
 const handleResponse = async <T>(response: Response): Promise<ApiResponse<T>> => {
+  const data = await response.json().catch(() => ({}));
+  
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw {
-      message: error.message || 'Something went wrong',
+    const error: ApiError = {
+      message: data.message || 'Something went wrong',
       status: response.status,
-      ...error
+      code: data.code,
+      details: data.details
     };
+    throw error;
   }
-  return response.json();
+  
+  return {
+    ...data,
+    statusCode: response.status,
+  };
 };
 
 // API Service Class
 class ApiService {
-  // Roles API
-  static async getRoles(): Promise<ApiResponse<{ roles: Role[] }>> {
-    if (USE_MOCK) {
-      return mockApi<{ roles: Role[] }>('/api/roles');
+  // Helper method for GET requests
+  private static async get<T>(endpoint: string, params?: Record<string, any>): Promise<ApiResponse<T>> {
+    const url = new URL(`${API_BASE_URL}${endpoint}`);
+    
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          url.searchParams.append(key, String(value));
+        }
+      });
     }
     
-    const response = await fetch(`${API_BASE_URL}/roles`);
-    return handleResponse<{ roles: Role[] }>(response);
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: DEFAULT_HEADERS,
+      credentials: 'include',
+    });
+    
+    return handleResponse<T>(response);
+  }
+  
+  // Helper method for POST requests
+  private static async post<T>(
+    endpoint: string, 
+    body: any,
+    params?: Record<string, any>
+  ): Promise<ApiResponse<T>> {
+    const url = new URL(`${API_BASE_URL}${endpoint}`);
+    
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          url.searchParams.append(key, String(value));
+        }
+      });
+    }
+    
+    const response = await fetch(url.toString(), {
+      method: 'POST',
+      headers: DEFAULT_HEADERS,
+      credentials: 'include',
+      body: JSON.stringify(body),
+    });
+    
+    return handleResponse<T>(response);
+  }
+
+  // Roles API with enhanced error handling
+  static async getRoles(): Promise<ApiResponse<Role[]>> {
+    try {
+      return await this.get<Role[]>('/roles');
+    } catch (error) {
+      console.warn('Failed to fetch roles from /roles endpoint, trying /api/roles');
+      // Try with /api prefix if the first attempt fails
+      try {
+        return await this.get<Role[]>('/api/roles');
+      } catch (innerError) {
+        console.warn('Failed to fetch roles from /api/roles endpoint');
+        // Return a successful response with empty data to trigger fallback in the UI
+        return {
+          success: true,
+          message: 'Using fallback roles',
+          data: [],
+          statusCode: 200
+        };
+      }
+    }
   }
 
   // Experiences API
-  static async getExperienceLevels(): Promise<ApiResponse<{ experiences: ExperienceLevel[] }>> {
-    if (USE_MOCK) {
-      return mockApi<{ experiences: ExperienceLevel[] }>('/api/experiences');
-    }
-    
-    const response = await fetch(`${API_BASE_URL}/experiences`);
-    return handleResponse<{ experiences: ExperienceLevel[] }>(response);
+  static async getExperienceLevels(): Promise<ApiResponse<ExperienceLevel[]>> {
+    return this.get<ExperienceLevel[]>('/experiences');
   }
 
-  // Roadmap API
-  static async getRoadmap(role: string, experience: string): Promise<ApiResponse<RoadmapResponse>> {
-    if (USE_MOCK) {
-      return mockApi<RoadmapResponse>(`/api/roadmap/${role}/${experience}`);
-    }
+  // Roadmap API - Get detailed roadmap (GET)
+  static async getDetailedRoadmap(
+    role: string, 
+    experienceLevel: string,
+    currentSkills?: string[],
+    timelineWeeks?: number,
+    focusArea?: string,
+    forceRegenerate: boolean = false
+  ): Promise<ApiResponse<DetailedRoadmapResponse>> {
+    // Build the endpoint URL with query parameters
+    const endpoint = '/roadmaps/detailed';
     
-    const response = await fetch(`${API_BASE_URL}/roadmap/${role}/${experience}`);
-    return handleResponse<RoadmapResponse>(response);
+    // Include required and optional parameters
+    const params: Record<string, any> = {
+      role: role,
+      experienceLevel: experienceLevel,
+      forceRegenerate: forceRegenerate
+    };
+    
+    // Add optional parameters if provided
+    if (currentSkills?.length) params.currentSkills = currentSkills.join(',');
+    if (timelineWeeks) params.timelineWeeks = timelineWeeks;
+    if (focusArea) params.focusArea = focusArea;
+    
+    return this.get<DetailedRoadmapResponse>(endpoint, params);
   }
 
-  // Interview Questions API
+  // Regenerate detailed roadmap (POST)
+  static async regenerateDetailedRoadmap(
+    role: string, 
+    experienceLevel: string,
+    currentSkills?: string[],
+    timelineWeeks?: number,
+    focusArea?: string,
+    forceRegenerate: boolean = true
+  ): Promise<ApiResponse<DetailedRoadmapResponse>> {
+    const endpoint = '/roadmaps/detailed';
+    
+    // Create request body
+    const requestBody: DetailedRoadmapRequest = {
+      role,
+      experienceLevel,
+      currentSkills,
+      timelineWeeks,
+      focusArea,
+      forceRegenerate
+    };
+    
+    return this.post<DetailedRoadmapResponse>(endpoint, requestBody);
+  }
+
+  // Generate Interview Questions
+  static async generateInterviewQuestions(
+    request: GenerateQuestionsRequest
+  ): Promise<ApiResponse<InterviewQuestionResponse>> {
+    return this.post<InterviewQuestionResponse>('/interview-questions', request);
+  }
+
+  // Get Interview Questions
   static async getInterviewQuestions(
-    role: string, 
-    experience: string
-  ): Promise<ApiResponse<{ questions: InterviewQuestion[] }>> {
-    if (USE_MOCK) {
-      return mockApi<{ questions: InterviewQuestion[] }>(
-        `/api/questions?role=${role}&experience=${experience}`
-      );
-    }
+    role: string,
+    experience: string,
+    count: number = 10,
+    topics?: string,
+    forceRefresh: boolean = false
+  ): Promise<ApiResponse<InterviewQuestionResponse>> {
+    const request: GenerateQuestionsRequest = {
+      role,
+      experienceLevel: experience,
+      count,
+      topics,
+      forceRefresh,
+    };
     
-    const response = await fetch(
-      `${API_BASE_URL}/questions?role=${role}&experience=${experience}`
-    );
-    return handleResponse<{ questions: InterviewQuestion[] }>(response);
+    return this.generateInterviewQuestions(request);
   }
 
-  // Interview Rounds API
+  // Get Interview Rounds
   static async getInterviewRounds(
-    role: string, 
+    role: string,
     experience: string
-  ): Promise<ApiResponse<{ rounds: InterviewRound[] }>> {
-    if (USE_MOCK) {
-      return mockApi<{ rounds: InterviewRound[] }>(
-        `/api/interview-rounds?role=${role}&experience=${experience}`
-      );
-    }
-    
-    const response = await fetch(
-      `${API_BASE_URL}/interview-rounds?role=${role}&experience=${experience}`
-    );
-    return handleResponse<{ rounds: InterviewRound[] }>(response);
+  ): Promise<ApiResponse<InterviewRound[]>> {
+    return this.get<InterviewRound[]>('/interview-rounds', { role, experienceLevel: experience });
   }
 
-  // Search Skills API
-  static async searchSkills(query: string): Promise<ApiResponse<{ skills: Skill[] }>> {
-    if (USE_MOCK) {
-      // Mock implementation would filter skills based on query
-      return mockApi<{ skills: Skill[] }>('/api/skills', 'GET', { query: { q: query } });
-    }
-    
-    const response = await fetch(`${API_BASE_URL}/skills?q=${encodeURIComponent(query)}`);
-    return handleResponse<{ skills: Skill[] }>(response);
+  // Search Skills
+  static async searchSkills(
+    query: string,
+    pagination?: PaginationParams
+  ): Promise<ApiResponse<Skill[]>> {
+    const params: SearchParams = { query, ...pagination };
+    return this.get<Skill[]>('/skills', params);
   }
-
-  // Submit Query API
-  static async submitQuery(query: string): Promise<ApiResponse<{ result: string }>> {
-    if (USE_MOCK) {
-      return mockApi<{ result: string }>(
-        '/api/query', 
-        'POST', 
-        { body: { query } }
-      );
-    }
-    
-    const response = await fetch(`${API_BASE_URL}/query`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ query }),
-    });
-    
-    return handleResponse<{ result: string }>(response);
+  
+  // AI Query
+  static async queryAI(prompt: string, model?: string): Promise<ApiResponse<{ result: string }>> {
+    return this.post<{ result: string }>('/ai/query', { prompt, model });
   }
 }
 

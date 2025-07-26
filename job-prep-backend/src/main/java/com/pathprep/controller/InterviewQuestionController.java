@@ -18,7 +18,7 @@ import reactor.core.publisher.Mono;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/interview-questions")
+@RequestMapping("/interview-questions")
 @RequiredArgsConstructor
 @Tag(name = "Interview Questions", description = "API for generating and retrieving interview questions")
 public class InterviewQuestionController {

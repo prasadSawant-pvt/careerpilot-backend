@@ -42,14 +42,13 @@ public class OpenApiConfig {
         return GroupedOpenApi.builder()
                 .group("public-apis")
                 .pathsToMatch(
-                        "/api/roadmaps/**",
-                        "/api/roles/**",
-                        "/api/skills/**",
-                        
-"/api/skill-resources/**",
-                        "/api/ai/**",
-                        "/api/coding-problems/**",
-                        "/api/interview-questions/**"
+                        "/roadmaps/**",
+                        "/roles/**",
+                        "/skills/**",
+                        "/skill-resources/**",
+                        "/ai/**",
+                        "/coding-problems/**",
+                        "/interview-questions/**"
                 )
                 .build();
     }

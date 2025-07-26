@@ -19,7 +19,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
+import java.time.Duration;
 
 /**
  * Implementation of GroqAIService for interacting with the Groq AI API.
@@ -37,23 +40,43 @@ public class GroqAIServiceImpl implements GroqAIService {
     @Override
     public Mono<String> generateText(String prompt, String model) {
         log.debug("Sending text generation request to Groq AI");
-        return groqWebClient
-                .post()
-                .uri("/chat/completions")
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(createChatRequest(prompt, model))
-                .retrieve()
-                .bodyToMono(GroqChatResponse.class)
-                .map(response -> {
-                    if (response.getChoices() == null || response.getChoices().isEmpty()) {
-                        throw new AIServiceException("No response from AI model");
+        
+        // Configure retry with exponential backoff
+        return Mono.defer(() -> groqWebClient
+            .post()
+            .uri("/chat/completions")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue(createChatRequest(prompt, model))
+            .retrieve()
+            .bodyToMono(GroqChatResponse.class)
+            .map(response -> {
+                if (response.getChoices() == null || response.getChoices().isEmpty()) {
+                    throw new AIServiceException("No response from AI model");
+                }
+                return response.getChoices().get(0).getMessage().getContent();
+            }))
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(1))
+                .maxBackoff(Duration.ofSeconds(10))
+                .jitter(0.5)
+                .filter(throwable -> {
+                    boolean isRateLimit = throwable instanceof WebClientResponseException.TooManyRequests;
+                    if (isRateLimit) {
+                        log.warn("Rate limited by Groq API, will retry...");
                     }
-                    return response.getChoices().get(0).getMessage().getContent();
+                    return isRateLimit || 
+                           throwable.getCause() instanceof WebClientResponseException.TooManyRequests;
                 })
-                .onErrorMap(e -> {
+                .onRetryExhaustedThrow((retryBackoffSpec, retrySignal) -> {
+                    log.error("Max retries (3) reached for Groq API call");
+                    return new AIServiceException("API rate limit exceeded after multiple retries. Please try again later.");
+                }))
+            .onErrorMap(e -> {
+                if (!(e instanceof AIServiceException)) {
                     log.error("Error generating text with Groq AI: {}", e.getMessage(), e);
                     return new AIServiceException("Failed to generate text: " + e.getMessage(), e);
-                });
+                }
+                return e;
+            });
     }
 
     @Override
@@ -68,28 +91,24 @@ public class GroqAIServiceImpl implements GroqAIService {
                         
                         // First try to parse as is
                         try {
-                            // Check if we're expecting a DetailedRoadmap and the response is an array
-                            if (responseType.equals(DetailedRoadmap.class) && jsonResponse.trim().startsWith("[")) {
-                                log.debug("Detected array response for DetailedRoadmap, converting to object with phases");
-                                // Parse the array of phases
-                                List<Map<String, Object>> phases = objectMapper.readValue(jsonResponse,
-                                    new TypeReference<List<Map<String, Object>>>() {});
+                            // For DetailedRoadmap, we now have a custom deserializer that handles both array and object formats
+                            if (responseType.equals(DetailedRoadmap.class)) {
+                                log.debug("Processing DetailedRoadmap response with custom deserializer");
+                                DetailedRoadmap roadmap = objectMapper.readValue(jsonResponse, DetailedRoadmap.class);
                                 
-                                // Create a new DetailedRoadmap with the phases
-                                DetailedRoadmap roadmap = new DetailedRoadmap();
-                                // Extract role and experience level from the prompt if possible
-                                String role = extractValueFromPrompt(prompt, "role");
-                                String experienceLevel = extractValueFromPrompt(prompt, "experienceLevel");
-                                
-                                roadmap.setRole(role);
-                                roadmap.setExperienceLevel(experienceLevel);
+                                // Set additional fields if not set by deserializer
+                                if (roadmap.getRole() == null) {
+                                    roadmap.setRole(extractValueFromPrompt(prompt, "role"));
+                                }
+                                if (roadmap.getExperienceLevel() == null) {
+                                    roadmap.setExperienceLevel(extractValueFromPrompt(prompt, "experienceLevel"));
+                                }
                                 roadmap.setCompositeKey();
-                                roadmap.setPhases(phases);
                                 roadmap.setCreatedAt(LocalDateTime.now());
                                 roadmap.setUpdatedAt(LocalDateTime.now());
                                 
                                 return Mono.just(responseType.cast(roadmap));
-                            } 
+                            }
                             // Handle SkillResource array response
                             else if (responseType.equals(SkillResource.class) && jsonResponse.trim().startsWith("[")) {
                                 log.debug("Detected array response for SkillResource, converting to object with learningPaths");
@@ -218,31 +237,46 @@ public class GroqAIServiceImpl implements GroqAIService {
     /**
      * Cleans the JSON response from the AI to ensure it's valid JSON.
      * Removes markdown code blocks and trims whitespace.
+     * Also fixes common JSON issues including week number ranges.
      */
     private String cleanJsonResponse(String response) {
         if (response == null || response.isEmpty()) {
             return "{}";
         }
         
+        String cleaned = response.trim();
+        
         // Remove markdown code blocks if present
-        String cleaned = response.replaceAll("(?s)```(?:json)?\\s*", "")  // Remove opening ```json
-                               .replaceAll("```\\s*$", "")                // Remove closing ```
-                               .trim();
+        if (cleaned.startsWith("```json")) {
+            cleaned = cleaned.substring(cleaned.indexOf("\n") + 1);
+            cleaned = cleaned.substring(0, cleaned.lastIndexOf("```")).trim();
+        } else if (cleaned.startsWith("```")) {
+            cleaned = cleaned.substring(cleaned.indexOf("\n") + 1);
+            cleaned = cleaned.substring(0, cleaned.lastIndexOf("```")).trim();
+        }
         
         // Remove any non-printable characters except newlines and tabs
         cleaned = cleaned.replaceAll("[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F-\\u009F]", "");
         
+        // Fix week number ranges (e.g., "weekNumber": 6-7 -> "weekNumber": "6-7")
+        cleaned = cleaned.replaceAll("(\\\"weekNumber\\\"\\s*:\\s*)(\\d+\\s*-\\s*\\d+)([,\\s\\}])?", "$1\\\"$2\\\"$3");
+        
         // Fix common JSON issues
-        cleaned = cleaned
-            // Fix missing commas between objects in arrays
-            .replaceAll("}\\s*\\{", "},{")
-            // Fix missing quotes around field names
-            .replaceAll("(?<!\")([a-zA-Z0-9_]+)(?=:)", "$1")
-            // Fix single quotes around property names
-            .replaceAll("([{,]\s*)'([^']+)'\s*:", "$1\"$2\":")
-            // Fix single quotes around string values
-            .replaceAll(":\s*'([^']+)'([,}])$", ": \"$1\"$2")
-            .replaceAll(":\s*'([^']+)'([,}])[\s\r\n]*", ": \"$1\"$2\n");
+        try {
+            // Fix missing commas between objects in arrays (escaped properly)
+            cleaned = cleaned.replaceAll("\\}\\s*\\{", "},{")
+                // Fix missing quotes around field names
+                .replaceAll("(?<!\\\")([a-zA-Z0-9_]+)(?=:)", "$1")
+                // Fix single quotes around property names
+                .replaceAll("([{\",]\\s*)'([^']+)'\\s*:", "$1\\\"$2\\\":")
+                // Fix single quotes around string values
+                .replaceAll(":\\s*'([^']+)'([,}])$", ": \\\"$1\\\"$2")
+                .replaceAll(":\\s*'([^']+)'([,}])\\s*", ": \\\"$1\\\"$2\\n");
+        } catch (Exception e) {
+            log.error("Error cleaning JSON response: {}", e.getMessage(), e);
+            // Return a minimal valid JSON object if cleaning fails
+            return "{}";
+        }
         
         // Try to find JSON object or array in the response
         int jsonStart = Math.max(cleaned.indexOf('{'), cleaned.indexOf('['));

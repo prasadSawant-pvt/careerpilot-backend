@@ -63,5 +63,12 @@ public interface RoadmapService {
      */
     Mono<Void> deleteRoadmap(String id);
 
-
+    /**
+     * Retrieves an existing roadmap or generates a new one if not found.
+     *
+     * @param role The target role for the roadmap
+     * @param experience The experience level for the roadmap
+     * @return A Mono containing the found or generated Roadmap
+     */
+    Mono<Roadmap> getOrGenerateRoadmap(String role, String experience);
 }

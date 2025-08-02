@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: pathprep-backend
+  cloud:
+    config:
+      enabled: ${SPRING_CLOUD_CONFIG_ENABLED:false}
+  config:
+    import: optional:configserver:/
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  main:
+    allow-bean-definition-overriding: true
+
+# Enable Spring Cloud Vault if VAULT_URI is set
+spring.cloud.vault:
+  enabled: ${VAULT_URI:false}
+  uri: ${VAULT_URI:}
+  token: ${VAULT_TOKEN:}
+  scheme: ${VAULT_SCHEME:http}
+  host: ${VAULT_HOST:localhost}
+  port: ${VAULT_PORT:8200}
+  connection-timeout: ${VAULT_CONNECTION_TIMEOUT:5000}
+  read-timeout: ${VAULT_READ_TIMEOUT:15000}
+  config:
+    order: -10
+  kv:
+    enabled: true
+    backend: ${VAULT_KV_BACKEND:secret}
+    application-name: ${spring.application.name}
+    profile-separator: "/"
+    default-context: "application"
+    profile-specific-context: "{application}/{profile}"

@@ -3,11 +3,12 @@ spring:
     name: pathprep-backend
   data:
     mongodb:
-      uri: ${MONGODB_URI:}
+      uri: ${MONGODB_URI:mongodb://localhost:27017/pathprep-ai}
       database: ${MONGODB_DATABASE:pathprep-ai}
-      auto-index-creation: true
+      auto-index-creation: ${MONGODB_AUTO_INDEX_CREATION:true}
+      auto-create-indexes: ${MONGODB_AUTO_CREATE_INDEXES:true}
       ssl:
-        enabled: ${MONGODB_SSL_ENABLED:true}
+        enabled: ${MONGODB_SSL_ENABLED:false}
       connection-timeout-ms: ${MONGODB_CONNECTION_TIMEOUT:30000}
       socket-timeout-ms: ${MONGODB_SOCKET_TIMEOUT:60000}
       min-connections: ${MONGODB_MIN_CONNECTIONS:5}

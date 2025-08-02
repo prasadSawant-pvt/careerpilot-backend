@@ -3,15 +3,15 @@ spring:
     name: pathprep-backend
   data:
     mongodb:
-      uri: mongodb+srv://prasadsawantpvt:G5XI2e2cZkb0w59f@careerpilotcluster.q2fzpik.mongodb.net/pathprep-ai?retryWrites=true&w=majority
-      database: pathprep-ai
+      uri: ${MONGODB_URI:}
+      database: ${MONGODB_DATABASE:pathprep-ai}
       auto-index-creation: true
       ssl:
-        enabled: true
-      connection-timeout-ms: 30000
-      socket-timeout-ms: 60000
-      min-connections: 5
-      max-connections: 100
+        enabled: ${MONGODB_SSL_ENABLED:true}
+      connection-timeout-ms: ${MONGODB_CONNECTION_TIMEOUT:30000}
+      socket-timeout-ms: ${MONGODB_SOCKET_TIMEOUT:60000}
+      min-connections: ${MONGODB_MIN_CONNECTIONS:5}
+      max-connections: ${MONGODB_MAX_CONNECTIONS:100}
   mvc:
     cors:
       mappings:
@@ -24,9 +24,9 @@ spring:
     include: secrets
 
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
   servlet:
-    context-path: /api
+    context-path: ${SERVER_SERVLET_CONTEXT_PATH:/api}
 
 # SpringDoc OpenAPI Configuration
 springdoc:
@@ -51,17 +51,18 @@ springdoc:
 
 groq:
   base-url: ${GROQ_BASE_URL:https://api.groq.com/openai/v1}
-  timeout: 30s
-  max-retries: 3
+  api-key: ${GROQ_API_KEY:}
+  timeout: ${GROQ_TIMEOUT:30s}
+  max-retries: ${GROQ_MAX_RETRIES:3}
   models:
-    default: llama3-8b-8192
-    fast: llama3-8b-8192
-    smart: llama3-70b-8192
-    code: codellama-34b-instruct
+    default: ${GROQ_MODEL_DEFAULT:llama3-8b-8192}
+    fast: ${GROQ_MODEL_FAST:llama3-8b-8192}
+    smart: ${GROQ_MODEL_SMART:llama3-70b-8192}
+    code: ${GROQ_MODEL_CODE:codellama-34b-instruct}
 
 groq-rate-limit:
-  requests-per-minute: 30
-  requests-per-day: 14400
+  requests-per-minute: ${GROQ_RATE_LIMIT_PER_MINUTE:30}
+  requests-per-day: ${GROQ_RATE_LIMIT_PER_DAY:14400}
 
 # Application settings
 pathprep:
@@ -72,9 +73,9 @@ pathprep:
 # Logging configuration
 logging:
   level:
-    com.pathprep: INFO
-    org.springframework.web: INFO
-    org.springdoc: INFO
+    com.pathprep: ${LOGGING_LEVEL_COM_PATH_PREP:INFO}
+    org.springframework.web: ${LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_WEB:INFO}
+    org.springdoc: ${LOGGING_LEVEL_ORG_SPRINGDOC:INFO}
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

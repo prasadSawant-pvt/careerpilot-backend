@@ -5,25 +5,24 @@ import com.pathprep.model.DetailedRoadmap;
 import com.pathprep.model.RoadmapPhase;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.json.JsonTest;
-import org.springframework.test.context.ActiveProfiles;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@JsonTest
-@ActiveProfiles("test")
+@ExtendWith(MockitoExtension.class)
 class DetailedRoadmapDeserializerTest {
 
-    @Autowired
     private ObjectMapper objectMapper;
 
     @BeforeEach
     void setUp() {
-        // Configure object mapper if needed
+        objectMapper = new ObjectMapper();
+        // Register any custom modules if needed
+        // objectMapper.registerModule(new JavaTimeModule());
     }
 
     @Test

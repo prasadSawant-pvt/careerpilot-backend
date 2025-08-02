@@ -3,8 +3,8 @@ spring:
     name: pathprep-backend
   data:
     mongodb:
-      uri: ${MONGODB_URI:mongodb+srv://username:password@cluster.mongodb.net/your-database?retryWrites=true&w=majority}
-      database: ${MONGODB_DATABASE:pathprep-ai}
+      uri: mongodb+srv://prasadsawantpvt:G5XI2e2cZkb0w59f@careerpilotcluster.q2fzpik.mongodb.net/pathprep-ai?retryWrites=true&w=majority
+      database: pathprep-ai
       auto-index-creation: true
       ssl:
         enabled: true
@@ -24,7 +24,7 @@ spring:
     include: secrets
 
 server:
-  port: ${SERVER_PORT:8080}
+  port: 8080
   servlet:
     context-path: /api
 
@@ -50,7 +50,6 @@ springdoc:
     disabled: true
 
 groq:
-  api-key: ${GROQ_API_KEY:your-api-key-here}
   base-url: ${GROQ_BASE_URL:https://api.groq.com/openai/v1}
   timeout: 30s
   max-retries: 3
@@ -103,4 +102,3 @@ management:
               CommonsRequestLoggingFilter: DEBUG
     pattern:
       console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-

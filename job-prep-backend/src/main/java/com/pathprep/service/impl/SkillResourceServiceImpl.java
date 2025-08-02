@@ -4,25 +4,36 @@ import com.pathprep.config.GroqProperties;
 import com.pathprep.dto.SkillResourceRequest;
 import com.pathprep.dto.response.SkillResourceResponse;
 import com.pathprep.exception.ResourceNotFoundException;
+import com.pathprep.exception.ServiceUnavailableException;
 import com.pathprep.model.SkillResource;
 import com.pathprep.repository.SkillResourceRepository;
+import com.pathprep.service.FallbackService;
 import com.pathprep.service.GroqAIService;
 import com.pathprep.service.SkillResourceService;
 import com.pathprep.util.ModelMapperUtil;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
+import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.IncorrectResultSizeDataAccessException;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Recover;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 /**
@@ -37,16 +48,28 @@ public class SkillResourceServiceImpl implements SkillResourceService {
     private final GroqAIService groqAIService;
     private final GroqProperties groqProperties;
     private final ModelMapperUtil modelMapper;
+    private final FallbackService fallbackService;
 
+    // Timeout constants
     private static final Duration DATABASE_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration AI_GENERATION_TIMEOUT = Duration.ofSeconds(30);
+    
+    // Error messages
+    private static final String DB_ERROR_MSG = "Database operation failed";
+    private static final String AI_ERROR_MSG = "AI service is currently unavailable";
+    private static final String TIMEOUT_MSG = "Operation timed out";
 
     @Override
     @Cacheable(value = "skillResources", key = "#request.skillName + '_' + #request.role + '_' + #request.experienceLevel")
+    @Retryable(retryFor = {DataAccessException.class, TimeoutException.class}, 
+               maxAttempts = 3, 
+               backoff = @Backoff(delay = 1000, multiplier = 2))
+    @TimeLimiter(name = "skillResourcesService")
+    @CircuitBreaker(name = "skillResourcesService", fallbackMethod = "fallbackGetOrGenerateSkillResources")
     public Mono<SkillResourceResponse> getOrGenerateSkillResources(SkillResourceRequest request) {
         String cacheKey = String.format("%s_%s_%s", 
             request.getSkillName(), request.getRole(), request.getExperienceLevel());
-        log.info("Generating or retrieving skill resources for key: {}", cacheKey);
+        log.info("Processing skill resources request for key: {}", cacheKey);
         
         return skillResourceRepository
             .findBySkillNameAndRoleAndExperienceLevel(
@@ -54,44 +77,32 @@ public class SkillResourceServiceImpl implements SkillResourceService {
                 request.getRole(), 
                 request.getExperienceLevel())
             .timeout(DATABASE_TIMEOUT)
-            .onErrorResume(IncorrectResultSizeDataAccessException.class, e -> {
-                log.warn("Multiple skill resources found for key: {}. Using the most recent one.", cacheKey);
-                return skillResourceRepository
-                    .findBySkillNameAndRoleAndExperienceLevel(
-                        request.getSkillName(), 
-                        request.getRole(), 
-                        request.getExperienceLevel())
-                    .take(Duration.ofDays(1))
-                    .timeout(DATABASE_TIMEOUT);
-            })
             .switchIfEmpty(Mono.defer(() -> {
-                log.info("No existing skill resources found for key: {}. Generating new one...", cacheKey);
-                return generateSkillResourcesWithAI(request)
-                    .timeout(AI_GENERATION_TIMEOUT);
+                log.info("No existing resources found, generating new ones for key: {}", cacheKey);
+                return generateSkillResourcesWithAI(request);
             }))
-            .flatMap(dbResource -> {
-                if (shouldUpdateWithAI(dbResource)) {
-                    log.info("Updating existing skill resources with AI for key: {}", cacheKey);
-                    return generateSkillResourcesWithAI(request)
-                        .timeout(AI_GENERATION_TIMEOUT)
-                        .flatMap(aiResource -> combineResources(dbResource, aiResource));
-                }
-                log.info("Using existing skill resources from database for key: {}", cacheKey);
-                return Mono.just(dbResource);
-            })
-            .map(this::convertToResponse)
-            .onErrorResume(e -> {
-                log.error("Error generating/retrieving skill resources for key: " + cacheKey, e);
-                return Mono.error(new RuntimeException("Failed to generate or retrieve skill resources", e));
-            });
+            .map(resource -> convertToResponse((SkillResource) resource))
+            .onErrorResume(e -> handleSkillResourceError(e, cacheKey, request));
     }
 
     @Override
     @Cacheable(value = "skillResources", key = "#id")
+    @Retryable(retryFor = {DataAccessException.class, TimeoutException.class}, 
+               maxAttempts = 2, 
+               backoff = @Backoff(delay = 1000))
+    @TimeLimiter(name = "getSkillResourcesByIdService")
+    @CircuitBreaker(name = "getSkillResourcesByIdService", fallbackMethod = "fallbackGetSkillResourcesById")
     public Mono<SkillResourceResponse> getSkillResourcesById(String id) {
+        log.debug("Fetching skill resources by ID: {}", id);
+        
         return skillResourceRepository.findById(id)
+            .timeout(DATABASE_TIMEOUT)
             .switchIfEmpty(Mono.error(new ResourceNotFoundException("Skill resources not found with id: " + id)))
-            .map(this::convertToResponse);
+            .map(resource -> convertToResponse((SkillResource) resource))
+            .onErrorResume(e -> {
+                log.error("Error fetching skill resources by ID: {}", id, e);
+                return fallbackService.handleDatabaseError(e, "Failed to fetch skill resources");
+            });
     }
 
     @Override
@@ -102,7 +113,13 @@ public class SkillResourceServiceImpl implements SkillResourceService {
 
     @Override
     @CacheEvict(value = "skillResources", key = "#id")
+    @Retryable(retryFor = {DataAccessException.class, TimeoutException.class}, 
+               maxAttempts = 2, 
+               backoff = @Backoff(delay = 1000))
+    @TimeLimiter(name = "refreshSkillResourcesService")
     public Mono<SkillResourceResponse> refreshSkillResources(String id) {
+        log.info("Refreshing skill resources for ID: {}", id);
+        
         return skillResourceRepository.findById(id)
             .switchIfEmpty(Mono.error(new ResourceNotFoundException("Skill resources not found with id: " + id)))
             .flatMap(existing -> {
@@ -110,16 +127,80 @@ public class SkillResourceServiceImpl implements SkillResourceService {
                 request.setSkillName(existing.getSkillName());
                 request.setRole(existing.getRole());
                 request.setExperienceLevel(existing.getExperienceLevel());
+                
                 return generateSkillResourcesWithAI(request)
+                    .timeout(DATABASE_TIMEOUT)
                     .flatMap(updated -> {
                         updated.setId(existing.getId());
                         updated.setCreatedAt(existing.getCreatedAt());
-                        return skillResourceRepository.save(updated);
+                        return skillResourceRepository.save(updated)
+                            .timeout(DATABASE_TIMEOUT);
                     });
             })
-            .map(this::convertToResponse);
+            .map(resource -> convertToResponse((SkillResource) resource))
+            .onErrorResume(e -> {
+                log.error("Failed to refresh skill resources for ID: {}", id, e);
+                return fallbackService.handleDatabaseError(e, "Failed to refresh skill resources");
+            });
     }
 
+    /**
+     * Fallback method for getOrGenerateSkillResources when the circuit is open
+     */
+    public Mono<SkillResourceResponse> fallbackGetOrGenerateSkillResources(
+            SkillResourceRequest request, Throwable t) {
+        log.warn("Using fallback for skill resources: {}", t.getMessage());
+        return fallbackService.handleDatabaseError(t, 
+            createFallbackResponse(request), 
+            "getOrGenerateSkillResources");
+    }
+
+    /**
+     * Handles errors during skill resource processing
+     */
+    private Mono<SkillResourceResponse> handleSkillResourceError(Throwable e, String cacheKey, SkillResourceRequest request) {
+        log.error("Error processing skill resources for key: {}", cacheKey, e);
+        
+        if (e instanceof TimeoutException) {
+            log.warn("Timeout while processing skill resources for key: {}", cacheKey);
+            return fallbackService.handleErrorWithDefault(
+                e, 
+                createFallbackResponse(request),
+                "skillResourceTimeout"
+            );
+        } else if (e instanceof DataAccessException) {
+            log.error("Database error while processing skill resources for key: {}", cacheKey, e);
+            return fallbackService.handleDatabaseError(e, DB_ERROR_MSG);
+        }
+        
+        return Mono.error(new ServiceUnavailableException("Service temporarily unavailable. Please try again later.", e));
+    }
+
+    /**
+     * Creates a fallback response when primary services are unavailable
+     */
+    private SkillResourceResponse createFallbackResponse(SkillResourceRequest request) {
+        // Create a minimal response with basic information
+        SkillResource fallback = new SkillResource();
+        fallback.setId("fallback-" + UUID.randomUUID().toString());
+        fallback.setSkillName(request.getSkillName());
+        fallback.setRole(request.getRole());
+        fallback.setExperienceLevel(request.getExperienceLevel());
+        fallback.setCreatedAt(LocalDateTime.now());
+        fallback.setUpdatedAt(LocalDateTime.now());
+        fallback.setResources(Collections.emptyList());
+        fallback.setFallback(true);
+        
+        return convertToResponse(fallback);
+    }
+
+    /**
+     * Generates skill resources using AI with retry and fallback
+     */
+    @Retryable(retryFor = {Exception.class}, 
+              maxAttempts = 2, 
+              backoff = @Backoff(delay = 1000))
+    @TimeLimiter(name = "aiGenerationService")
     private Mono<SkillResource> generateSkillResourcesWithAI(SkillResourceRequest request) {
         log.info("Generating new skill resources with AI for skill: {}, role: {}, level: {}", 
             request.getSkillName(), request.getRole(), request.getExperienceLevel());
@@ -128,6 +209,7 @@ public class SkillResourceServiceImpl implements SkillResourceService {
         String model = groqProperties.getDefaultModel();
         
         return Mono.defer(() -> groqAIService.generateStructuredResponse(prompt, model, SkillResource.class))
+            .timeout(AI_GENERATION_TIMEOUT)
             .flatMap(skillResource -> {
                 // Set additional fields
                 skillResource.setId(UUID.randomUUID().toString());
@@ -136,9 +218,18 @@ public class SkillResourceServiceImpl implements SkillResourceService {
                 skillResource.setExperienceLevel(request.getExperienceLevel());
                 skillResource.setCreatedAt(LocalDateTime.now());
                 skillResource.setUpdatedAt(LocalDateTime.now());
+                skillResource.setFallback(false);
                 
                 return skillResourceRepository.save(skillResource)
-                    .timeout(DATABASE_TIMEOUT);
+                    .timeout(DATABASE_TIMEOUT)
+                    .onErrorResume(e -> {
+                        log.error("Failed to save generated resources: {}", e.getMessage());
+                        return Mono.just(skillResource); // Return unsaved resource if save fails
+                    });
+            })
+            .onErrorResume(e -> {
+                log.error("AI generation failed: {}", e.getMessage());
+                return Mono.error(new ServiceUnavailableException(AI_ERROR_MSG, e));
             });
     }
     

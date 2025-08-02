@@ -346,7 +346,7 @@ public class DetailedRoadmapDeserializer extends StdDeserializer<DetailedRoadmap
         }
         
         // Otherwise, look for phase-like objects in the fields
-        Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+        Iterator<Map.Entry<String, JsonNode>> fields = node.fields(); // Use fields() to get an iterator
         while (fields.hasNext()) {
             Map.Entry<String, JsonNode> entry = fields.next();
             JsonNode value = entry.getValue();

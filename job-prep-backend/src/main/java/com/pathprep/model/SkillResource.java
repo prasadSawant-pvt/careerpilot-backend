@@ -35,11 +35,22 @@ public class SkillResource {
     private List<ResourceItem> certifications;
     private List<ResourceItem> communities;
     
+    private List<ResourceItem> resources;
+    private boolean fallback;
+    
     @CreatedDate
     private LocalDateTime createdAt;
     
     @LastModifiedDate
     private LocalDateTime updatedAt;
+    
+    public void setResources(List<ResourceItem> resources) {
+        this.resources = resources;
+    }
+    
+    public void setFallback(boolean fallback) {
+        this.fallback = fallback;
+    }
     
     /**
      * Nested class for resource items

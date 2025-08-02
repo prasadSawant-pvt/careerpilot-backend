@@ -7,12 +7,46 @@ spring:
       database: ${MONGODB_DATABASE:pathprep-ai}
       auto-index-creation: ${MONGODB_AUTO_INDEX_CREATION:true}
       auto-create-indexes: ${MONGODB_AUTO_CREATE_INDEXES:true}
+      authentication-database: admin
+      
+      # SSL Configuration
       ssl:
         enabled: ${MONGODB_SSL_ENABLED:false}
-      connection-timeout-ms: ${MONGODB_CONNECTION_TIMEOUT:30000}
-      socket-timeout-ms: ${MONGODB_SOCKET_TIMEOUT:60000}
-      min-connections: ${MONGODB_MIN_CONNECTIONS:5}
+        invalid-host-name-allowed: ${MONGODB_SSL_INVALID_HOSTNAME_ALLOWED:true}
+      
+      # Connection Settings
+      application-name: ${spring.application.name}
+      retry-writes: true
+      retry-reads: true
+      read-preference: ${MONGODB_READ_PREFERENCE:primary}
+      
+      # Timeout Settings
+      connect-timeout: ${MONGODB_CONNECT_TIMEOUT:10000}
+      socket-timeout: ${MONGODB_SOCKET_TIMEOUT:60000}
+      server-selection-timeout: ${MONGODB_SERVER_SELECTION_TIMEOUT:30000}
+      
+      # Connection Pool Settings
+      min-connections: ${MONGODB_MIN_CONNECTIONS:10}
       max-connections: ${MONGODB_MAX_CONNECTIONS:100}
+      max-wait-time: ${MONGODB_MAX_WAIT_TIME:120000}
+      max-connection-life-time: ${MONGODB_MAX_CONNECTION_LIFE_TIME:300000}
+      max-connection-idle-time: ${MONGODB_MAX_CONNECTION_IDLE_TIME:60000}
+      
+      # Additional MongoDB Options
+      option:
+        sslInvalidHostNameAllowed: ${MONGODB_SSL_INVALID_HOSTNAME_ALLOWED:true}
+        sslEnabled: ${MONGODB_SSL_ENABLED:false}
+        readPreference: ${MONGODB_READ_PREFERENCE:primary}
+        retryWrites: true
+        retryReads: true
+        serverSelectionTimeoutMS: 30000
+        connectTimeoutMS: 10000
+        socketTimeoutMS: 60000
+        maxIdleTimeMS: 60000
+        maxLifeTimeMS: 300000
+        maxPoolSize: 100
+        minPoolSize: 10
+        waitQueueTimeoutMS: 120000
   mvc:
     cors:
       mappings:
